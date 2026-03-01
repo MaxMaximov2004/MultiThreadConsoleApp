@@ -32,6 +32,7 @@ static class SimpleEditorManager
 
             switch (consoleKey.Key,consoleKey.Modifiers) {
                 case (ConsoleKey.Enter, ConsoleModifiers.None):{ data.Push('\n');screen.AddChar('\n');break; }
+                case (ConsoleKey.Spacebar, ConsoleModifiers.None): { data.Push(' '); screen.AddChar(' '); break; }
                 case (ConsoleKey.Delete, ConsoleModifiers.None): { screen.RemoveAll(); break; }
                 case (ConsoleKey.Backspace, ConsoleModifiers.Control): {screen.RemoveChar(); break; }
                 case (ConsoleKey.Backspace, ConsoleModifiers.Shift): { screen.RemoveLine(); break; }
