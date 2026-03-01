@@ -1,24 +1,37 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace MultiThreadConsoleApp
 {
-    public class SimpleView
+    public class SimpleView:IDisposable
     {
         protected string title;
         protected List<String> functions;
         protected List<String> text;
-        protected object AtomicFlagChange = false;
+        protected object AtomicFlagChange = true;
         protected object Locker = new object();
+        protected Mutex? FileGuard = null;
+        protected string? CurrentDir = null; 
 
         public SimpleView(string title, List<String> functions)
         {
             this.title = title;
             this.functions = functions;
             text = new List<String>() {""};
+
+            try
+            {
+                CurrentDir = Directory.GetCurrentDirectory();
+            } catch { }
+
+            if (CurrentDir != null) { CurrentDir += $"\\{DateTime.Now.ToString("g")}.txt".Replace(':','_'); }
+
         }
 
         public string GetScreen()
@@ -27,19 +40,38 @@ namespace MultiThreadConsoleApp
 
             lock (Locker)
             {
-                string str = $"--=={title}==--\n";
+                string str = $"----===={title}====----\n";
                 foreach (String function in functions)
                 {
-                    str += $"\t{function}";
+                    str += $"{function}  ";
                 }
-                str += "\n\n";
+                str += $"\nfile:{CurrentDir}\n";
+
+                if (File.Exists(CurrentDir)) { str += "\tSaved!\n"; }
 
                 foreach (String line in text)
                 {
-                    str += line;
+                    str += line+"\n";
                 }
                 return str;
 
+            }
+        }
+
+        public void SaveData()
+        {
+            if (CurrentDir != null)
+            {
+                if (FileGuard == null) { FileGuard = new Mutex(); }
+
+                FileGuard.WaitOne();
+                //CurrentDir += $"{DateTime.Now.ToString("g")}.txt";
+
+                if (File.Exists(CurrentDir)) {  File.Delete(CurrentDir); }
+                File.WriteAllLines(CurrentDir, text);
+
+                FileGuard.ReleaseMutex();
+                Interlocked.Exchange(ref this.AtomicFlagChange, true);
             }
         }
 
@@ -50,14 +82,15 @@ namespace MultiThreadConsoleApp
 
             lock (Locker)
             {
+                
                 if (ch == '\n')
                 {
-                    text.Last().Append('\n');
+                    //text[text.Count - 1] += ch;
                     text.Add("");
                 }
                 else
                 {
-                    text.Last().Append(ch);
+                    text[text.Count - 1] += ch;
                 }
             }
 
@@ -79,7 +112,7 @@ namespace MultiThreadConsoleApp
                     }
                     else
                     {
-                        text.RemoveAt(text.Count - 1);
+                        text[text.Count - 1] = "";
                     }
                 }
             }
@@ -94,13 +127,106 @@ namespace MultiThreadConsoleApp
             lock (Locker) {
                 if (text.Count > 0)
                 {
-                    text.RemoveAt(text.Count - 1);
-
+                    
+                    if(text.Count > 1)
+                    {
+                        text.RemoveAt(text.Count - 1);
+                    } else
+                    {
+                        text[0] = "";
+                    }
                 }
             }
 
             Interlocked.Exchange(ref this.AtomicFlagChange, true);
 
+        }
+
+        public void RemoveAll()
+        {
+            Interlocked.Exchange(ref text, new List<string>() {""});
+            Interlocked.Exchange(ref this.AtomicFlagChange, true);
+        }
+
+        public void Dispose()
+        {
+            FileGuard.Dispose();
+        }
+    }
+
+    public class SimpleCompareView
+    {
+        protected string title;
+        protected List<String> functions;
+        protected List<String>? lines_A = null;
+        protected List<String>? lines_B = null;
+        protected List<String>? lines_choosed = null;
+
+        protected object AtomicFlagChange = true;
+        protected object Locker = new object();
+
+        public SimpleCompareView(string title, List<String> functions)
+        {
+            this.title = title;
+            this.functions = functions;
+        }
+
+        public string GetScreen()
+        {
+            Interlocked.Exchange(ref this.AtomicFlagChange, false);
+
+            lock (Locker)
+            {
+                string str = $"----===={title}====----\n";
+                foreach (String function in functions)
+                {
+                    str += $"{function}  ";
+                }
+                
+                return str;
+            }
+        }
+
+
+
+    }
+
+    public class SimpleFileWorker
+    {
+        protected List<String> file_lines = new List<string>();
+        protected FileInfo? file = null;
+        protected Mutex? file_guard = null;
+
+        private SimpleFileWorker() { }
+
+        public SimpleFileWorker(string path)
+        {
+            file_guard = new Mutex();
+            file = new FileInfo(path);
+            if (!file.Exists)
+            {
+                file.Create();
+            }
+        }
+
+        public void WriteString(string str) 
+        {
+            file_guard.WaitOne();
+            if (!file.Exists)
+            {
+                file.Create();
+                file_lines.Add(str);
+
+                foreach (string line in file_lines)
+                {
+                    using (StreamWriter sw = file.AppendText()) { sw.WriteLine(line); }
+                }
+            }
+            else
+            {
+                using (StreamWriter sw = file.AppendText()) { sw.WriteLine(str); }
+            }
+            file_guard.ReleaseMutex();
         }
 
     }

@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace MultiThreadConsoleApp
 {
     public interface SafeQueue;
-    public class ThreadSafeQueueData:SafeQueue
+    public class ThreadSafeQueueData:SafeQueue, IDisposable
     {
         private Mutex? mut;
         private object? locker;
@@ -63,12 +63,79 @@ namespace MultiThreadConsoleApp
                 return Flag;
             }
         }
+
+        public void Dispose()
+        {
+            mut.Dispose();
+        }
     }
 
+    public class ThreadSafeQueueLineData : SafeQueue, IDisposable
+    {
+        private Mutex? mut;
+        private object? locker;
+        private Queue<string>? data;
+        private bool Action = false;
+        public ThreadSafeQueueLineData()
+        {
+            mut = new Mutex();
+            data = new Queue<string>();
+            locker = new object();
+        }
 
-    enum Commands:byte { Nothing,Del,NewLine,RollBack,RollForward,Exit }
+        public void Push(string ch)
+        {
+            lock (locker)
+            {
+                Action = true;
+                data.Enqueue(ch);
+            }
+        }
 
-    class ThreadSafeQueueCommands:SafeQueue
+        public string Pop()
+        {
+            lock (locker)
+            {
+                string last = data.LastOrDefault("!!!");
+                return last;
+            }
+        }
+
+        public void PopDel()
+        {
+            lock (locker)
+            {
+                Action = true;
+                if (data.Count > 0)
+                {
+                    data.Dequeue();
+                }
+            }
+        }
+
+        public bool CheckLastAction()
+        {
+            lock (locker)
+            {
+                bool Flag = false;
+                if (Action)
+                {
+                    Flag = true;
+                    Action = false;
+                }
+                return Flag;
+            }
+        }
+
+        public void Dispose()
+        {
+            mut.Dispose();
+        }
+    }
+
+    enum Commands:byte { Nothing,Del,NewLine,NewChar,RollBack,RollForward,Exit }
+
+    class ThreadSafeQueueCommands:SafeQueue,IDisposable
     {
         private Mutex? mut;
         private object? locker;
@@ -124,6 +191,11 @@ namespace MultiThreadConsoleApp
                 }
                 return Flag;
             }
+        }
+
+        public void Dispose()
+        {
+            mut.Dispose();
         }
     }
 
